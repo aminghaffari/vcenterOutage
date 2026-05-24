@@ -1,0 +1,54 @@
+# Install PowerShell Core if not already installed
+sudo apt-get update
+sudo apt-get install -y powershell
+
+# Install PowerCLI module
+Install-Module -Name VMware.PowerCLI -Scope CurrentUser -Force -AllowClobber
+
+# Define IP range
+$ipRange = "192.168.1.1-254"  # Replace with your desired IP range
+
+# Define ESXi credentials
+$username = "your_username"
+$password = "your_password"  # It's recommended to use SecureString for password, but for simplicity, I'm using plain text here
+
+# Function to scan IP range
+function Scan-IPRange {
+    param (
+        [string]$ipRange
+    )
+    $ipAddresses = 1..254 | ForEach-Object { "192.168.1.$_" }  # Replace "192.168.1" with your network segment
+    $reachableIPs = @()
+    foreach ($ip in $ipAddresses) {
+        if (Test-Connection -ComputerName $ip -Count 1 -Quiet) {
+            $reachableIPs += $ip
+        }
+    }
+    return $reachableIPs
+}
+
+# Function to connect to ESXi host and get VMs
+function Get-ESXiVMs {
+    param (
+        [string]$esxiHost,
+        [string]$username,
+        [string]$password
+    )
+    Connect-VIServer -Server $esxiHost -Username $username -Password $password -WarningAction SilentlyContinue
+    $vms = Get-VM
+    foreach ($vm in $vms) {
+        Write-Output "ESXi Host: $esxiHost, VM Name: $($vm.Name), Location: $($vm.Host)"
+    }
+    Disconnect-VIServer -Server $esxiHost -Confirm:$false -WarningAction SilentlyContinue
+}
+
+# Scan IP range and connect to ESXi hosts
+$reachableIPs = Scan-IPRange -ipRange $ipRange
+foreach ($ip in $reachableIPs) {
+    try {
+        Get-ESXiVMs -esxiHost $ip -username $username -password $password
+    }
+    catch {
+        Write-Output "Failed to connect to ESXi host: $ip"
+    }
+}
